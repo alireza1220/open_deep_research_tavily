@@ -118,6 +118,52 @@ This creates `tests/expt_results/deep_research_bench_model-name.jsonl` with the 
 
 Follow the [quickstart](#-quickstart) to start LangGraph server locally and test the agent out on LangGraph Studio.
 
+#### FastAPI REST API
+
+The FastAPI endpoint provides a REST API interface for the Deep Research agent. It supports both synchronous and streaming research requests.
+
+**Start the FastAPI server:**
+
+```bash
+# Basic usage (local only)
+python -m open_deep_research.main
+
+# With ngrok tunnel (public access)
+python -m open_deep_research.main --ngrok
+
+# Custom port
+python -m open_deep_research.main --port 8080
+```
+
+**API Endpoints:**
+- `GET /health` - Health check
+- `POST /v1/research` - Synchronous research
+- `POST /v1/research/stream` - Streaming research (SSE)
+
+**Example usage:**
+
+```bash
+# Synchronous research
+curl -X POST http://localhost:8000/v1/research \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Research quantum computing"}]
+  }'
+
+# Streaming research
+curl -X POST http://localhost:8000/v1/research/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Research AI"}]
+  }'
+```
+
+**Interactive API Documentation:**
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+For detailed setup instructions, see [doc/FASTAPI_SETUP.md](doc/FASTAPI_SETUP.md).
+
 #### Hosted deployment
  
 You can easily deploy to [LangGraph Platform](https://langchain-ai.github.io/langgraph/concepts/#deployment-options). 
