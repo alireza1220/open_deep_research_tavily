@@ -241,7 +241,7 @@ def test_stream_research_endpoint(client: FastAPIClient, query: str) -> bool:  #
                     print("   ⚠️  No final report received in stream")
                 return True
             elif event_type == "error":
-                error_msg = event_data.get("error", "Unknown error")
+                error_msg = event_data.get("error_message", "Unknown error")
                 print(f"\n❌ Stream error: {error_msg}")
                 return False
             elif event_type == "progress":

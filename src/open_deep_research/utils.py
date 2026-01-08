@@ -83,10 +83,12 @@ async def tavily_search(
     
     # Initialize summarization model with retry logic
     model_api_key = get_api_key_for_model(configurable.summarization_model, config)
+    model_base_url = get_base_url_for_model(configurable.summarization_model, config)
     summarization_model = init_chat_model(
         model=configurable.summarization_model,
         max_tokens=configurable.summarization_model_max_tokens,
         api_key=model_api_key,
+        base_url=model_base_url,
         tags=["langsmith:nostream"]
     ).with_structured_output(Summary).with_retry(
         stop_after_attempt=configurable.max_structured_output_retries
@@ -911,6 +913,30 @@ def get_api_key_for_model(model_name: str, config: RunnableConfig):
             return os.getenv("ANTHROPIC_API_KEY")
         elif model_name.startswith("google"):
             return os.getenv("GOOGLE_API_KEY")
+        return None
+
+def get_base_url_for_model(model_name: str, config: RunnableConfig):
+    """Get API base URL for a specific model from environment or config."""
+    should_get_from_config = os.getenv("GET_API_BASE_URL_FROM_CONFIG", "false")
+    model_name = model_name.lower()
+    if should_get_from_config.lower() == "true":
+        api_base_url = config.get("configurable", {}).get("apiBaseUrl", {})
+        if not api_base_url:
+            return None
+        if model_name.startswith("openai:"):
+            return api_base_url.get("OPENAI_API_BASE_URL")
+        elif model_name.startswith("anthropic:"):
+            return api_base_url.get("ANTHROPIC_API_BASE_URL")
+        elif model_name.startswith("google"):
+            return api_base_url.get("GOOGLE_API_BASE_URL")
+        return None
+    else:
+        if model_name.startswith("openai:"):
+            return os.getenv("OPENAI_API_BASE_URL")
+        elif model_name.startswith("anthropic:"):
+            return os.getenv("ANTHROPIC_API_BASE_URL")
+        elif model_name.startswith("google"):
+            return os.getenv("GOOGLE_API_BASE_URL")
         return None
 
 def get_tavily_api_key(config: RunnableConfig):
