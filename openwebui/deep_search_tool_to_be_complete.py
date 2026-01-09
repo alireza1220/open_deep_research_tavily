@@ -5,9 +5,7 @@ author: Alireza Mounesisohi
 version: 0.0.1
 """
 
-import asyncio
 import json
-import time
 from typing import Any, Callable
 
 import requests
@@ -54,17 +52,6 @@ class Tools:
 
         MAX_RESEARCHER_ITERATION: int = Field(
             default=6, description="Max research iteration."
-        )
-
-        # Add streaming option here.
-        POST_STREAM: bool = Field(
-            default=False,
-            description="The post streaming of the response after recieving the output",
-        )
-
-        # Add delay here
-        STREAM_DELAY: float = Field(
-            default=0.1, description="Delay between chunks in seconds"
         )
 
     def __init__(self):
@@ -235,49 +222,14 @@ class Tools:
                     print("No citations found")
 
             # Emit the final report as a message
-            ############
-            def stream_text(words):
-                # Split text into words
-                # words = self.valves.TEST_TEXT.split()
-
-                # Yield start message
-                start_msg = {"choices": [{"delta": {}, "finish_reason": None}]}
-                yield f"data: {json.dumps(start_msg)}\n\n"
-
-                # Stream each word with a delay
-                for i, word in enumerate(words):
-                    # Add space before word (except first)
-                    content = word if i == 0 else f" {word}"
-
-                    chunk_msg = {
-                        "choices": [
-                            {"delta": {"content": content}, "finish_reason": None}
-                        ]
-                    }
-                    yield f"data: {json.dumps(chunk_msg)}\n\n"
-
-                    # Small delay to simulate streaming
-                    time.sleep(self.valves.STREAM_DELAY)
-
-                # Yield finish message
-                finish_msg = {"choices": [{"delta": {}, "finish_reason": "stop"}]}
-                yield f"data: {json.dumps(finish_msg)}\n\n"
-                yield "data: [DONE]\n\n"
-
-            ############
-            # throwiing the output if else stream it
-            if not self.valves.POST_STREAM:
-                await __event_emitter__(
-                    {
-                        "type": "message",
-                        "data": {
-                            "content": f"{final_report}\n\n---\n",
-                        },
-                    }
-                )
-            else:
-                stream_text(final_report)
-                # write the logic for streaming
+            await __event_emitter__(
+                {
+                    "type": "message",
+                    "data": {
+                        "content": f"{final_report}\n\n---\n",
+                    },
+                }
+            )
 
             return f"Deep research completed: {final_report}"
 
