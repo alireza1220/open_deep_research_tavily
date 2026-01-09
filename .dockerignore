@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation (keep README.md for package metadata)
+*.md
+!README.md
+doc/
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+_todos/
+examples/
+integration-test/
+openwebui/
+# Note: tests/ is needed for package installation, so we include it
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Other
+*.ipynb
+.claude/
+

@@ -162,6 +162,23 @@ curl -X POST http://localhost:8000/v1/research/stream \
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+**Docker Deployment:**
+
+Run the FastAPI server in Docker for easy deployment anywhere:
+
+```bash
+# Using Docker Compose (recommended)
+docker-compose up -d
+
+# Or build and run manually
+docker build -t open-deep-research .
+docker run -d -p 8000:8000 --env-file .env open-deep-research
+```
+
+The API will be available at http://localhost:8000
+
+For detailed Docker setup instructions, see [DOCKER.md](DOCKER.md).
+
 **Docker/OpenWebUI Integration:**
 
 When using FastAPI with OpenWebUI running in Docker Compose:
