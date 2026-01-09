@@ -180,6 +180,10 @@ async def tavily_search_async(
     return search_results
 
 
+## TODO: adding perplexity as an alternative tool here.
+# adding perplexity from open_deep_research to add it as a tool
+
+
 async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
     """Summarize webpage content using AI model with timeout protection.
 
@@ -979,6 +983,17 @@ def get_base_url_for_model(model_name: str, config: RunnableConfig):
         elif model_name.startswith("google"):
             return os.getenv("GOOGLE_API_BASE_URL")
         return None
+
+
+def get_perplexity_api_key(config: RunnableConfig) -> str | None:
+    """Get Perplexity API key from environment or config."""
+    should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
+    if should_get_from_config.lower() == "true":
+        api_keys = config.get("configurable", {}).get("apiKeys", {})
+        if not api_keys:
+            return None
+        return api_keys.get("PERPLEXITY_API_KEY")
+    return os.getenv("PERPLEXITY_API_KEY")
 
 
 def get_tavily_api_key(config: RunnableConfig):
