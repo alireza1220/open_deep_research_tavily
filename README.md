@@ -162,7 +162,40 @@ curl -X POST http://localhost:8000/v1/research/stream \
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-For detailed setup instructions, see [doc/FASTAPI_SETUP.md](doc/FASTAPI_SETUP.md).
+**Docker/OpenWebUI Integration:**
+
+When using FastAPI with OpenWebUI running in Docker Compose:
+
+```bash
+# Terminal 1: Start FastAPI (bind to all interfaces for Docker access)
+python -m open_deep_research.main --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start OpenWebUI (or use existing docker-compose)
+# In OpenWebUI tool config, use:
+# FASTAPI_BASE_URL: http://host.docker.internal:8000
+```
+
+**OpenAI Base URL Configuration:**
+
+Common OpenAI base URL options:
+
+- **Official OpenAI API:**
+  ```
+  https://api.openai.com/v1
+  ```
+
+- **Custom provider (example):**
+  ```
+  http://models.ai.nant.com/v1
+  ```
+
+- **Local/Self-hosted:**
+  ```
+  http://localhost:8000/v1
+  http://host.docker.internal:8000/v1  # From Docker container
+  ```
+
+For detailed setup instructions, see [doc/FASTAPI_SETUP.md](doc/FASTAPI_SETUP.md) and [DOCKER_NETWORKING.md](DOCKER_NETWORKING.md).
 
 #### Hosted deployment
  

@@ -268,7 +268,7 @@ def get_progress_message(node_names: List[str], has_final_report: bool) -> str:
         return "All completed - drafting the final version"
     
     node_messages = {
-        "clarify_with_user": "Asking clarifying questions",
+        "clarify_with_user": "Checking whether clarifying questions are needed",
         "write_research_brief": "Completed briefing, now working on supervisor agent",
         "research_supervisor": "Conducting research",
         "researcher": "Gathering information",

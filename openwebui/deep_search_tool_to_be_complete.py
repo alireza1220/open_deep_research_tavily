@@ -13,49 +13,52 @@ import requests
 from pydantic import BaseModel, Field
 
 class Tools:
-    class Valves(BaseModel)
-        FASTAPI_BASE_URL=Field(
-            default="https://defectless-overreadily-maye.ngrok-free.dev",
-            description="Base URL for Deep Search FastAPI endpoint"
+    class Valves(BaseModel):
+        FASTAPI_BASE_URL: str = Field(
+            default="http://host.docker.internal:8000",
+            description="Base URL for Deep Search FastAPI endpoint. "
+                       "For Docker: use 'host.docker.internal:8000' (Mac/Windows) or host IP (Linux). "
+                       "For same Docker network: use service name like 'fastapi:8000'. "
+                       "For public access: use ngrok/cloudflared URL."
         )
 
-        OPENAI_BASE_URL=Field(
+        OPENAI_BASE_URL: str = Field(
              default="http://models.ai.nant.com/v1",
              description="Base URL for OPENAI"
         )
 
-        OPENAI_API_KEY: Field(
+        OPENAI_API_KEY: str = Field(
             default="sk-",
             description="API key for API" 
         )
 
 
-        SUMMARIZER_MODEL=Field(
+        SUMMARIZER_MODEL: str = Field(
             default="openai:Llama-4-Maverick",
             description="Model for summarizing research"
         )
 
-        RESEARCH_MODEL=Field(
+        RESEARCH_MODEL: str = Field(
             default="openai:Llama-4-Maverick",
             description="Model for research"
         )
 
-        COMPRESSION_MODEL=Field(
+        COMPRESSION_MODEL: str = Field(
             default="openai:Llama-4-Maverick",
             description="Model for Compression"
         )
 
-        FINAL_REPORT_MODEL=Field(
+        FINAL_REPORT_MODEL: str = Field(
             default="openai:Llama-4-Maverick",
             description="Model model for final report"
         )
 
-        ALLOW_CLARIFICATION = Field(
+        ALLOW_CLARIFICATION: bool = Field(
              default=False,
              description="Asking user for more clarification."
         )
 
-        MAX_RESEARCHER_ITERATION=Field(
+        MAX_RESEARCHER_ITERATION: int = Field(
              default=6,
              description="Max research iteration."
         )
@@ -79,24 +82,6 @@ class Tools:
                     },
                 }
             )
-
-            # request_data = {
-            #     "data": [
-            #         query,
-            #         3,
-            #         1,
-            #         self.valves.MODEL_PROVIDER,
-            #         self.valves.MODEL,
-            #         32000,
-            #         1,
-            #         "",
-            #         "",
-            #         False,
-            #         False,
-            #         False,
-            #     ]
-            # }
-
 
             request_data = {
                 "messages": [
@@ -122,55 +107,29 @@ class Tools:
 
 
             try:
-                start_url =  f"{self.valves.FASTAPI_BASE_URL}/v1/research/stream"
+                start_url = f"{self.valves.FASTAPI_BASE_URL}/v1/research/stream"
                 
-                with requests.post(start_url, json=request_data, stream=True, timeout=300, ) as response:
-                    # Sample output:
-                    # {
-                    # "event": "progress",
-                    # "data": {
-                    #     "final_report": null,
-                    #     "final_report_without_citations": null,
-                    #     "citations": null,
-                    #     "messages": null,
-                    #     "notes": null,
-                    #     "research_brief": "I am looking for the latest developments in .",
-                    #     "nodes": [
-                    #     "research_supervisor"
-                    #     ],
-                    #     "progress_message": "Conducting research",
-                    #     "has_final_report": false,
-                    #     "started_time": "2026-01-08T18:58:44.535495+00:00",
-                    #     "ended_time": null,
-                    #     "duration": null,
-                    #     "visited_websites": null,
-                    #     "searches_occurred": 0,
-                    #     "configuration": {
-                    #     "allow_clarification": false,
-                    #     "max_researcher_iterations": 1,
-                    #     "apiKeys": {
-                    #         "OPENAI_API_KEY": ""
-                    #     },
-                    #     "apiBaseUrl": {
-                    #         "OPENAI_API_BASE_URL": "http://models.ai.nant.com/v1"
-                    #     },
-                    #     "summarization_model": "openai:Llama-4-Maverick",
-                    #     "research_model": "openai:Llama-4-Maverick",
-                    #     "compression_model": "openai:Llama-4-Maverick",
-                    #     "final_report_model": "openai:Llama-4-Maverick"
-                    #     },
-                    #     "error_message": null,
-                    #     "stats": null
-                    # }
-                    # }
-                    
+                final_report = None
+                citations = []
+                
+                with requests.post(start_url, json=request_data, stream=True, timeout=300) as response:
                     if not response.ok:
-                        print(f"Error: {response.status_code}")
-                        print(response.text)
+                        error_message = f"Error: {response.status_code} - {response.text}"
+                        print(error_message)
+                        await __event_emitter__(
+                            {
+                                "type": "status",
+                                "data": {
+                                    "description": error_message,
+                                    "done": True,
+                                    "hidden": False,
+                                },
+                            }
+                        )
+                        return error_message
                     
-                    else:
-                        event_index = 0
-                        for line in response.iter_lines(decode_unicode=True):
+                    event_index = 0
+                    for line in response.iter_lines(decode_unicode=True):
                         if not line:
                             continue
                         if line.startswith("data: "):
@@ -181,7 +140,7 @@ class Tools:
                                 print(f"**Failed to parse JSON for event {event_index}: {e}**\n\n")
                                 await __event_emitter__(
                                     {
-                                        "type": "status",  # We set the type here
+                                        "type": "status",
                                         "data": {
                                             "description": f"JSON error: {line}",
                                             "done": True,
@@ -192,35 +151,36 @@ class Tools:
                                 continue
 
                             try:
-                                if msg.get("event") == "progres":
-                                    await __event_emitter__(
-                                        {
-                                            "type": "status", 
-                                            "data": {
-                                                "description": msg.get("data", {}).get("progress_message"),
-                                                "done": False,
-                                                "hidden": False,
-                                            },
-                                            # Note done is False here indicating we are still emitting statuses
-                                        }
-                                    )
+                                if msg.get("event") == "progress":
+                                    progress_msg = msg.get("data", {}).get("progress_message")
+                                    if progress_msg:
+                                        await __event_emitter__(
+                                            {
+                                                "type": "status",
+                                                "data": {
+                                                    "description": progress_msg,
+                                                    "done": False,
+                                                    "hidden": False,
+                                                },
+                                            }
+                                        )
                                 
                                 elif msg.get("event") == "complete":
-                                    final_report = msg.get("data", {}).get("final_report")
+                                    event_data = msg.get("data", {})
+                                    final_report = event_data.get("final_report")
+                                    citations = event_data.get("citations", [])
                                     # exit the loop
                                     break
-
-                                    
 
                             except Exception as error:
                                 print(">>>> ERROR")
                                 print(">>>> ERROR")
-                                print(f"Erro no loop: {error}")
+                                print(f"Error in loop: {error}")
                                 await __event_emitter__(
                                     {
                                         "type": "status",
                                         "data": {
-                                            "description": f"Error: {str(error)}",  # Exibe a mensagem de erro corretamente
+                                            "description": f"Error: {str(error)}",
                                             "done": True,
                                             "hidden": False,
                                         },
@@ -231,6 +191,7 @@ class Tools:
                 if not final_report:
                     final_report = "Was not possible to perform the requested action."
 
+                # Single final status event to mark all previous statuses as done
                 await __event_emitter__(
                     {
                         "type": "status",
@@ -242,8 +203,40 @@ class Tools:
                     }
                 )
 
-                # stream the final report now 
-                
+                # Emit individual citation events for each citation
+                if citations:
+                    for citation in citations:
+                        article = {
+                            "link": citation.get("link", ""),
+                            "title": citation.get("title", ""),
+                            "content": citation.get("title", ""),  # Use title as content since citations don't have content field
+                        }
+                        
+                        # Emit citation event in exact OpenWebUI format
+                        await __event_emitter__(
+                            {
+                                "type": "citation",
+                                "data": {
+                                    "document": [article["content"]],
+                                    "metadata": [{"source": article["link"]}],
+                                    "source": {"name": article["title"]},
+                                },
+                            }
+                        )
+                    else:
+                        print("No citations found")
+
+                # Emit the final report as a message
+                await __event_emitter__(
+                    {
+                        "type": "message",
+                        "data": {
+                            "content": f"{final_report}\n\n---\n",
+                        },
+                    }
+                )
+
+                return f"Deep research completed: {final_report}"
                                 
 
             except requests.RequestException as e:
