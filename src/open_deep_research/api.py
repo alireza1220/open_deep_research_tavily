@@ -74,12 +74,21 @@ def build_config(config_dict: Optional[Dict[str, Any]]) -> RunnableConfig:
     if not config_dict:
         return {}
     
+    # Log search_api if present
+    search_api_value = config_dict.get("search_api")
+    if search_api_value:
+        print(f"🔍 API: Received search_api from request: {search_api_value}", flush=True)
+    else:
+        print(f"🔍 API: No search_api in request config, will use default", flush=True)
+    
     # Convert config_dict to Configuration object, then to RunnableConfig
     try:
         config_obj = Configuration(**config_dict)
+        print(f"🔍 API: Built config with search_api: {config_obj.search_api.value}", flush=True)
         return {"configurable": config_dict}
     except Exception:
         # If validation fails, still pass it through (let LangGraph handle it)
+        print(f"🔍 API: Config validation failed, passing through raw config", flush=True)
         return {"configurable": config_dict}
 
 
@@ -351,6 +360,7 @@ async def research_stream(request: ResearchRequest) -> StreamingResponse:
             
             # Build configuration
             config = build_config(request.config)
+            print(f"🔍 API: Config built, search_api in configurable: {config.get('configurable', {}).get('search_api', 'NOT SET')}", flush=True)
             
             # Stream events from the deep researcher graph in updates mode
             # This gives us incremental state updates rather than full state each time

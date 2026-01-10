@@ -6,9 +6,9 @@ version: 0.0.1
 """
 
 import json
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-import requests
+import httpx
 from pydantic import BaseModel, Field
 
 
@@ -54,6 +54,11 @@ class Tools:
             default=6, description="Max research iteration."
         )
 
+        SEARCH_API: Literal["tavily", "perplexity"] = Field(
+            default="tavily",
+            description="Search engine to use for web research. Tavily provides comprehensive search results with AI-generated summaries. Perplexity provides fast, cited web-backed responses.",
+        )
+
     def __init__(self):
         self.valves = self.Valves()
 
@@ -84,6 +89,7 @@ class Tools:
             "config": {
                 "allow_clarification": self.valves.ALLOW_CLARIFICATION,
                 "max_researcher_iterations": self.valves.MAX_RESEARCHER_ITERATION,
+                "search_api": self.valves.SEARCH_API,
                 "apiKeys": {"OPENAI_API_KEY": self.valves.OPENAI_API_KEY},
                 "apiBaseUrl": {"OPENAI_API_BASE_URL": self.valves.OPENAI_BASE_URL},
                 "summarization_model": self.valves.SUMMARIZER_MODEL,
@@ -93,93 +99,95 @@ class Tools:
             },
         }
 
+        print(f"🔍 Using search API: {self.valves.SEARCH_API}")
+
         try:
             start_url = f"{self.valves.FASTAPI_BASE_URL}/v1/research/stream"
 
             final_report = None
             citations = []
 
-            with requests.post(
-                start_url, json=request_data, stream=True, timeout=300
-            ) as response:
-                if not response.ok:
-                    error_message = f"Error: {response.status_code} - {response.text}"
-                    print(error_message)
-                    await __event_emitter__(
-                        {
-                            "type": "status",
-                            "data": {
-                                "description": error_message,
-                                "done": True,
-                                "hidden": False,
-                            },
-                        }
-                    )
-                    return error_message
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                async with client.stream("POST", start_url, json=request_data) as response:
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        error_message = f"Error: {response.status_code} - {error_text.decode()}"
+                        print(error_message)
+                        await __event_emitter__(
+                            {
+                                "type": "status",
+                                "data": {
+                                    "description": error_message,
+                                    "done": True,
+                                    "hidden": False,
+                                },
+                            }
+                        )
+                        return error_message
 
-                event_index = 0
-                for line in response.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        event_index += 1
-                        try:
-                            msg = json.loads(line[6:])  # strip "data: "
-                        except json.JSONDecodeError as e:
-                            print(
-                                f"**Failed to parse JSON for event {event_index}: {e}**\n\n"
-                            )
-                            await __event_emitter__(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "description": f"JSON error: {line}",
-                                        "done": True,
-                                        "hidden": False,
-                                    },
-                                }
-                            )
+                    event_index = 0
+                    async for line in response.aiter_lines():
+                        if not line:
                             continue
-
-                        try:
-                            if msg.get("event") == "progress":
-                                progress_msg = msg.get("data", {}).get(
-                                    "progress_message"
+                        if line.startswith("data: "):
+                            event_index += 1
+                            try:
+                                msg = json.loads(line[6:])  # strip "data: "
+                            except json.JSONDecodeError as e:
+                                print(
+                                    f"**Failed to parse JSON for event {event_index}: {e}**\n\n"
                                 )
-                                if progress_msg:
-                                    await __event_emitter__(
-                                        {
-                                            "type": "status",
-                                            "data": {
-                                                "description": progress_msg,
-                                                "done": False,
-                                                "hidden": False,
-                                            },
-                                        }
+                                await __event_emitter__(
+                                    {
+                                        "type": "status",
+                                        "data": {
+                                            "description": f"JSON error: {line}",
+                                            "done": True,
+                                            "hidden": False,
+                                        },
+                                    }
+                                )
+                                continue
+
+                            try:
+                                if msg.get("event") == "progress":
+                                    progress_msg = msg.get("data", {}).get(
+                                        "progress_message"
                                     )
+                                    if progress_msg:
+                                        await __event_emitter__(
+                                            {
+                                                "type": "status",
+                                                "data": {
+                                                    "description": progress_msg,
+                                                    "done": False,
+                                                    "hidden": False,
+                                                },
+                                            }
+                                        )
 
-                            elif msg.get("event") == "complete":
-                                event_data = msg.get("data", {})
-                                final_report = event_data.get("final_report")
-                                citations = event_data.get("citations", [])
-                                # exit the loop
+                                elif msg.get("event") == "complete":
+                                    event_data = msg.get("data", {})
+                                    final_report = event_data.get("final_report")
+                                    citations = event_data.get("citations", [])
+                                    # exit the loop
+                                    break
+
+                            except Exception as error:
+                                print(">>>> ERROR")
+                                print(">>>> ERROR")
+                                print(f"Error in loop: {error}")
+                                await __event_emitter__(
+                                    {
+                                        "type": "status",
+                                        "data": {
+                                            "description": f"Error: {str(error)}",
+                                            "done": True,
+                                            "hidden": False,
+                                        },
+                                    }
+                                )
                                 break
-
-                        except Exception as error:
-                            print(">>>> ERROR")
-                            print(">>>> ERROR")
-                            print(f"Error in loop: {error}")
-                            await __event_emitter__(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "description": f"Error: {str(error)}",
-                                        "done": True,
-                                        "hidden": False,
-                                    },
-                                }
-                            )
-                            break
 
             if not final_report:
                 final_report = "Was not possible to perform the requested action."
@@ -233,7 +241,7 @@ class Tools:
 
             return f"Deep research completed: {final_report}"
 
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             error_message = (
                 f"BrowserUI found this error performing the action: {str(e)}"
             )

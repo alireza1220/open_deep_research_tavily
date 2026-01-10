@@ -18,6 +18,7 @@ from langgraph.types import Command
 
 from open_deep_research.configuration import (
     Configuration,
+    SearchAPI,
 )
 from open_deep_research.prompts import (
     clarify_with_user_instructions,
@@ -44,6 +45,7 @@ from open_deep_research.utils import (
     get_all_tools,
     get_api_key_for_model,
     get_base_url_for_model,
+    get_config_value,
     get_model_token_limit,
     get_notes_from_tool_calls,
     get_today_str,
@@ -384,6 +386,10 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
     configurable = Configuration.from_runnable_config(config)
     researcher_messages = state.get("researcher_messages", [])
     
+    # Log search API configuration
+    search_api_raw = get_config_value(configurable.search_api)
+    print(f"🔍 Backend: Raw search_api config value: {search_api_raw}", flush=True)
+    
     # Get all available research tools (search, MCP, think_tool)
     tools = await get_all_tools(config)
     if len(tools) == 0:
@@ -401,8 +407,26 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
         "tags": ["langsmith:nostream"]
     }
     
+    # Determine search tool name based on configured search API
+    search_api = SearchAPI(get_config_value(configurable.search_api))
+    print(f"🔍 Backend: Using search API: {search_api.value}", flush=True)
+    
+    if search_api == SearchAPI.TAVILY:
+        search_tool_name = "tavily_search"
+    elif search_api == SearchAPI.PERPLEXITY:
+        search_tool_name = "perplexity_search"
+    elif search_api == SearchAPI.ANTHROPIC:
+        search_tool_name = "web_search"
+    elif search_api == SearchAPI.OPENAI:
+        search_tool_name = "web_search"
+    else:
+        search_tool_name = "web_search"  # Default fallback
+    
+    print(f"🔍 Backend: Search tool name for prompt: {search_tool_name}", flush=True)
+    
     # Prepare system prompt with MCP context if available
     researcher_prompt = research_system_prompt.format(
+        search_tool_name=search_tool_name,
         mcp_prompt=configurable.mcp_prompt or "", 
         date=get_today_str()
     )

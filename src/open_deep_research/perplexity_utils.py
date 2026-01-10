@@ -2,6 +2,18 @@
 # Perplexity Search Tool Utils
 ############################
 
+import asyncio
+import os
+from typing import Annotated, Any, List
+from urllib.parse import urlparse
+
+import aiohttp
+import requests
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import InjectedToolArg, tool
+
+from open_deep_research.utils import get_perplexity_api_key
+
 PERPLEXITY_SEARCH_DESCRIPTION = (
     "Search the web using the Perplexity API and return an answer with citations. "
     "Useful for getting fast, cited web-backed responses."
@@ -63,20 +75,102 @@ async def perplexity_search(
     async with aiohttp.ClientSession() as session:
         results = await asyncio.gather(*[_run_query(session, q) for q in queries])
 
+    def _extract_title_from_url(url: str, query: str = "", is_primary: bool = True) -> str:
+        """Extract a meaningful title from a URL or generate a descriptive one."""
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "")
+            
+            # Extract meaningful parts from domain
+            if domain:
+                # Use domain name as base, capitalize appropriately
+                domain_parts = domain.split(".")
+                if len(domain_parts) >= 2:
+                    site_name = domain_parts[-2].capitalize()
+                else:
+                    site_name = domain.capitalize()
+                
+                if is_primary and query:
+                    return f"{site_name} - {query}"
+                elif is_primary:
+                    return f"{site_name} - Perplexity Search Result"
+                else:
+                    return f"{site_name} - Supporting Source"
+            else:
+                # Fallback if URL parsing fails
+                if is_primary and query:
+                    return f"Perplexity Search Result: {query}"
+                elif is_primary:
+                    return "Perplexity Search Result"
+                else:
+                    return "Perplexity Supporting Source"
+        except Exception:
+            # Fallback to generic title
+            if is_primary and query:
+                return f"Perplexity Search Result: {query}"
+            elif is_primary:
+                return "Perplexity Search Result"
+            else:
+                return "Perplexity Supporting Source"
+
+    # Collect all sources from all queries
+    all_sources = []
+    source_counter = 1
+    
+    for result in results:
+        citations = result.get("citations", [])
+        content = result.get("content", "")
+        query = result.get("query", "")
+        
+        if not citations:
+            # If no citations, create a single source entry with the content
+            title = _extract_title_from_url("https://www.perplexity.ai", query, is_primary=True)
+            all_sources.append({
+                "title": title,
+                "url": "https://www.perplexity.ai",
+                "content": content,
+                "source_number": source_counter
+            })
+            source_counter += 1
+        else:
+            # Create a source entry for each citation
+            for i, citation_url in enumerate(citations):
+                is_primary = (i == 0)
+                title = _extract_title_from_url(citation_url, query, is_primary=is_primary)
+                
+                if is_primary:
+                    # First citation gets the full synthesized content
+                    all_sources.append({
+                        "title": title,
+                        "url": citation_url,
+                        "content": content,
+                        "source_number": source_counter
+                    })
+                else:
+                    # Additional citations are supporting sources
+                    all_sources.append({
+                        "title": title,
+                        "url": citation_url,
+                        "content": f"Supporting source referenced in the main answer for query: {query}",
+                        "source_number": source_counter
+                    })
+                source_counter += 1
+
+    # Format output to match Tavily format
+    if not all_sources:
+        return "No valid search results found. Please try different search queries or use a different search API."
+
     formatted_output = "Search results: \n\n"
-    for i, result in enumerate(results):
-        formatted_output += f"\n\n--- QUERY {i + 1}: {result['query']} ---\n"
-        formatted_output += f"{result['content']}\n\n"
-        if result["citations"]:
-            formatted_output += "CITATIONS:\n"
-            formatted_output += "\n".join([f"- {c}" for c in result["citations"]])
-            formatted_output += "\n\n"
+    for source in all_sources:
+        formatted_output += f"\n\n--- SOURCE {source['source_number']}: {source['title']} ---\n"
+        formatted_output += f"URL: {source['url']}\n\n"
+        formatted_output += f"SUMMARY:\n{source['content']}\n\n"
         formatted_output += "\n\n" + "-" * 80 + "\n"
 
     return formatted_output
 
 
-def perplexity_search(search_queries):
+def perplexity_search_legacy(search_queries):
     """Search the web using the Perplexity API.
 
     Args:

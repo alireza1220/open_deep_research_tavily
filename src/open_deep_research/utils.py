@@ -180,10 +180,6 @@ async def tavily_search_async(
     return search_results
 
 
-## TODO: adding perplexity as an alternative tool here.
-# adding perplexity from open_deep_research to add it as a tool
-
-
 async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
     """Summarize webpage content using AI model with timeout protection.
 
@@ -559,7 +555,7 @@ async def get_search_tool(search_api: SearchAPI):
     """Configure and return search tools based on the specified API provider.
 
     Args:
-        search_api: The search API provider to use (Anthropic, OpenAI, Tavily, or None)
+        search_api: The search API provider to use (Anthropic, OpenAI, Tavily, Perplexity, or None)
 
     Returns:
         List of configured search tool objects for the specified provider
@@ -575,6 +571,18 @@ async def get_search_tool(search_api: SearchAPI):
     elif search_api == SearchAPI.TAVILY:
         # Configure Tavily search tool with metadata
         search_tool = tavily_search
+        search_tool.metadata = {
+            **(search_tool.metadata or {}),
+            "type": "search",
+            "name": "web_search",
+        }
+        return [search_tool]
+
+    elif search_api == SearchAPI.PERPLEXITY:
+        # Configure Perplexity search tool with metadata
+        # Import here to avoid circular import
+        from open_deep_research.perplexity_utils import perplexity_search
+        search_tool = perplexity_search
         search_tool.metadata = {
             **(search_tool.metadata or {}),
             "type": "search",
