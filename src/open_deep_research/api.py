@@ -496,9 +496,13 @@ async def research_stream(request: ResearchRequest) -> StreamingResponse:
                     ),
                 )
             else:
+                # Include messages even when there's no final report (e.g., clarification needed)
+                messages = convert_langchain_to_dict(final_state.get("messages", []))
+                
                 completion_event = StreamEvent(
                     event="end",
                     data=EventData(
+                        messages=messages if messages else None,
                         started_time=started_time,
                         ended_time=ended_time,
                         duration=duration,

@@ -135,6 +135,17 @@ python -m open_deep_research.main --ngrok
 python -m open_deep_research.main --port 8080
 ```
 
+**Command-Line Options:**
+
+The FastAPI server supports the following command-line arguments:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--ngrok` | flag | - | Enable ngrok tunnel for public access |
+| `--port` | integer | `PORT` env var or `8000` | Port to run the server on |
+| `--host` | string | `0.0.0.0` | Host to bind to |
+| `--reload` | flag | - | Enable auto-reload for development |
+
 **API Endpoints:**
 - `GET /health` - Health check
 - `POST /v1/research` - Synchronous research

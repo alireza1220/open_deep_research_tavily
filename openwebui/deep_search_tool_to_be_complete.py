@@ -61,13 +61,12 @@ class Tools:
 
     def __init__(self):
         self.valves = self.Valves()
+        # Store conversation history for clarification loop
+        self.conversation_history = []
 
     async def deep_research(
-        self, query: str, __event_emitter__: Callable[[dict], Any] = None
+        self, query: str, __event_emitter__: Callable[[dict], Any] = None, **kwargs
     ) -> str:
-        # emitter = EventEmitter(__event_emitter__)
-        # TODO analyze the self here and see if the stream object is in the self here that is passed or is it possible to pass the self from the inlet to here so we use that instead of the deep search
-        # print(f"self in tool is {self}")
         await __event_emitter__(
             {
                 "type": "status",
@@ -79,13 +78,22 @@ class Tools:
             }
         )
 
+        # Build messages array with conversation history
+        messages = []
+        
+        # Add previous conversation history if available
+        if self.conversation_history:
+            messages.extend(self.conversation_history)
+            print(f"🔍 Using {len(self.conversation_history)} messages from conversation history", flush=True)
+        
+        # Add current user query
+        messages.append({
+            "role": "user",
+            "content": query,
+        })
+
         request_data = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": query,
-                }
-            ],
+            "messages": messages,
             "config": {
                 "allow_clarification": self.valves.ALLOW_CLARIFICATION,
                 "max_researcher_iterations": self.valves.MAX_RESEARCHER_ITERATION,
@@ -170,7 +178,49 @@ class Tools:
                                     event_data = msg.get("data", {})
                                     final_report = event_data.get("final_report")
                                     citations = event_data.get("citations", [])
+                                    # Clear conversation history on successful completion
+                                    self.conversation_history = []
                                     # exit the loop
+                                    break
+
+                                elif msg.get("event") == "end":
+                                    # Handle end event (e.g., clarification needed)
+                                    event_data = msg.get("data", {})
+                                    messages_from_response = event_data.get("messages", [])
+                                    
+                                    # Extract clarification message if present
+                                    if messages_from_response:
+                                        # Find the last assistant message (clarification question)
+                                        for message in reversed(messages_from_response):
+                                            if message.get("role") == "assistant":
+                                                clarification_msg = message.get("content", "")
+                                                if clarification_msg:
+                                                    # Store conversation history for next call
+                                                    self.conversation_history = messages_from_response.copy()
+                                                    print(f"🔍 Stored {len(self.conversation_history)} messages in conversation history", flush=True)
+                                                    
+                                                    # Emit clarification message to user
+                                                    await __event_emitter__(
+                                                        {
+                                                            "type": "message",
+                                                            "data": {
+                                                                "content": clarification_msg,
+                                                            },
+                                                        }
+                                                    )
+                                                    # Mark status as done
+                                                    await __event_emitter__(
+                                                        {
+                                                            "type": "status",
+                                                            "data": {
+                                                                "description": "Clarification needed",
+                                                                "done": True,
+                                                                "hidden": False,
+                                                            },
+                                                        }
+                                                    )
+                                                    return f"Clarification needed: {clarification_msg}"
+                                    # If no messages, break normally
                                     break
 
                             except Exception as error:
