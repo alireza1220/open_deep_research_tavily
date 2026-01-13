@@ -26,7 +26,7 @@ curl -X POST "${API_BASE}/v1/research" \
     ],
     "config": {
       "allow_clarification": false,
-      "max_researcher_iterations": 1,
+      "max_researcher_iterations": 3,
       "apiKeys": {
         "OPENAI_API_KEY": "sk-_74oWR7B_Iw7MOYzpCuuGA"
       },

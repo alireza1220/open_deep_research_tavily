@@ -10,16 +10,17 @@ from pydantic import BaseModel, Field
 
 class SearchAPI(Enum):
     """Enumeration of available search API providers."""
-    
+
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     TAVILY = "tavily"
     PERPLEXITY = "perplexity"
     NONE = "none"
 
+
 class MCPConfig(BaseModel):
     """Configuration for Model Context Protocol (MCP) servers."""
-    
+
     url: Optional[str] = Field(
         default=None,
         optional=True,
@@ -36,9 +37,10 @@ class MCPConfig(BaseModel):
     )
     """Whether the MCP server requires authentication"""
 
+
 class Configuration(BaseModel):
     """Main configuration class for the Deep Research agent."""
-    
+
     # General Configuration
     max_structured_output_retries: int = Field(
         default=3,
@@ -48,9 +50,9 @@ class Configuration(BaseModel):
                 "default": 3,
                 "min": 1,
                 "max": 10,
-                "description": "Maximum number of retries for structured output calls from models"
+                "description": "Maximum number of retries for structured output calls from models",
             }
-        }
+        },
     )
     allow_clarification: bool = Field(
         default=True,
@@ -58,9 +60,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "boolean",
                 "default": True,
-                "description": "Whether to allow the researcher to ask the user clarifying questions before starting research"
+                "description": "Whether to allow the researcher to ask the user clarifying questions before starting research",
             }
-        }
+        },
     )
     max_concurrent_research_units: int = Field(
         default=5,
@@ -71,27 +73,33 @@ class Configuration(BaseModel):
                 "min": 1,
                 "max": 20,
                 "step": 1,
-                "description": "Maximum number of research units to run concurrently. This will allow the researcher to use multiple sub-agents to conduct research. Note: with more concurrency, you may run into rate limits."
+                "description": "Maximum number of research units to run concurrently. This will allow the researcher to use multiple sub-agents to conduct research. Note: with more concurrency, you may run into rate limits.",
             }
-        }
+        },
     )
     # Research Configuration
     search_api: SearchAPI = Field(
-        default=SearchAPI.TAVILY,
+        default=SearchAPI.PERPLEXITY,
         metadata={
             "x_oap_ui_config": {
                 "type": "select",
-                "default": "tavily",
+                "default": "perplexity",
                 "description": "Search API to use for research. NOTE: Make sure your Researcher Model supports the selected search API.",
                 "options": [
                     {"label": "Tavily", "value": SearchAPI.TAVILY.value},
                     {"label": "Perplexity", "value": SearchAPI.PERPLEXITY.value},
-                    {"label": "OpenAI Native Web Search", "value": SearchAPI.OPENAI.value},
-                    {"label": "Anthropic Native Web Search", "value": SearchAPI.ANTHROPIC.value},
-                    {"label": "None", "value": SearchAPI.NONE.value}
-                ]
+                    {
+                        "label": "OpenAI Native Web Search",
+                        "value": SearchAPI.OPENAI.value,
+                    },
+                    {
+                        "label": "Anthropic Native Web Search",
+                        "value": SearchAPI.ANTHROPIC.value,
+                    },
+                    {"label": "None", "value": SearchAPI.NONE.value},
+                ],
             }
-        }
+        },
     )
     max_researcher_iterations: int = Field(
         default=6,
@@ -102,9 +110,9 @@ class Configuration(BaseModel):
                 "min": 1,
                 "max": 10,
                 "step": 1,
-                "description": "Maximum number of research iterations for the Research Supervisor. This is the number of times the Research Supervisor will reflect on the research and ask follow-up questions."
+                "description": "Maximum number of research iterations for the Research Supervisor. This is the number of times the Research Supervisor will reflect on the research and ask follow-up questions.",
             }
-        }
+        },
     )
     max_react_tool_calls: int = Field(
         default=10,
@@ -115,9 +123,9 @@ class Configuration(BaseModel):
                 "min": 1,
                 "max": 30,
                 "step": 1,
-                "description": "Maximum number of tool calling iterations to make in a single researcher step."
+                "description": "Maximum number of tool calling iterations to make in a single researcher step.",
             }
-        }
+        },
     )
     # Model Configuration
     summarization_model: str = Field(
@@ -126,9 +134,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "text",
                 "default": "openai:gpt-4.1-mini",
-                "description": "Model for summarizing research results from Tavily search results"
+                "description": "Model for summarizing research results from Tavily search results",
             }
-        }
+        },
     )
     summarization_model_max_tokens: int = Field(
         default=8192,
@@ -136,9 +144,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "number",
                 "default": 8192,
-                "description": "Maximum output tokens for summarization model"
+                "description": "Maximum output tokens for summarization model",
             }
-        }
+        },
     )
     max_content_length: int = Field(
         default=50000,
@@ -148,9 +156,9 @@ class Configuration(BaseModel):
                 "default": 50000,
                 "min": 1000,
                 "max": 200000,
-                "description": "Maximum character length for webpage content before summarization"
+                "description": "Maximum character length for webpage content before summarization",
             }
-        }
+        },
     )
     research_model: str = Field(
         default="openai:gpt-4.1",
@@ -158,9 +166,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "text",
                 "default": "openai:gpt-4.1",
-                "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
+                "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API.",
             }
-        }
+        },
     )
     research_model_max_tokens: int = Field(
         default=10000,
@@ -168,9 +176,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "number",
                 "default": 10000,
-                "description": "Maximum output tokens for research model"
+                "description": "Maximum output tokens for research model",
             }
-        }
+        },
     )
     compression_model: str = Field(
         default="openai:gpt-4.1",
@@ -178,9 +186,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "text",
                 "default": "openai:gpt-4.1",
-                "description": "Model for compressing research findings from sub-agents. NOTE: Make sure your Compression Model supports the selected search API."
+                "description": "Model for compressing research findings from sub-agents. NOTE: Make sure your Compression Model supports the selected search API.",
             }
-        }
+        },
     )
     compression_model_max_tokens: int = Field(
         default=8192,
@@ -188,9 +196,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "number",
                 "default": 8192,
-                "description": "Maximum output tokens for compression model"
+                "description": "Maximum output tokens for compression model",
             }
-        }
+        },
     )
     final_report_model: str = Field(
         default="openai:gpt-4.1",
@@ -198,9 +206,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "text",
                 "default": "openai:gpt-4.1",
-                "description": "Model for writing the final report from all research findings"
+                "description": "Model for writing the final report from all research findings",
             }
-        }
+        },
     )
     final_report_model_max_tokens: int = Field(
         default=10000,
@@ -208,9 +216,9 @@ class Configuration(BaseModel):
             "x_oap_ui_config": {
                 "type": "number",
                 "default": 10000,
-                "description": "Maximum output tokens for final report model"
+                "description": "Maximum output tokens for final report model",
             }
-        }
+        },
     )
     # MCP server configuration
     mcp_config: Optional[MCPConfig] = Field(
@@ -219,9 +227,9 @@ class Configuration(BaseModel):
         metadata={
             "x_oap_ui_config": {
                 "type": "mcp",
-                "description": "MCP server configuration"
+                "description": "MCP server configuration",
             }
-        }
+        },
     )
     mcp_prompt: Optional[str] = Field(
         default=None,
@@ -229,11 +237,10 @@ class Configuration(BaseModel):
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "description": "Any additional instructions to pass along to the Agent regarding the MCP tools that are available to it."
+                "description": "Any additional instructions to pass along to the Agent regarding the MCP tools that are available to it.",
             }
-        }
+        },
     )
-
 
     @classmethod
     def from_runnable_config(
@@ -250,5 +257,5 @@ class Configuration(BaseModel):
 
     class Config:
         """Pydantic configuration."""
-        
+
         arbitrary_types_allowed = True

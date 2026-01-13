@@ -54,9 +54,13 @@ class Tools:
             default=6, description="Max research iteration."
         )
 
-        SEARCH_API: Literal["tavily", "perplexity"] = Field(
-            default="tavily",
-            description="Search engine to use for web research. Tavily provides comprehensive search results with AI-generated summaries. Perplexity provides fast, cited web-backed responses.",
+        # SEARCH_API: Literal["tavily", "perplexity"] = Field(
+        #     default="tavily",
+        #     description="Search engine to use for web research. Tavily provides comprehensive search results with AI-generated summaries. Perplexity provides fast, cited web-backed responses.",
+        # )
+        SEARCH_API: Literal["perplexity"] = Field(
+            default="perplexity",
+            description="Search engine to use for web research. Perplexity provides fast, cited web-backed responses.",
         )
 
     def __init__(self):
@@ -80,17 +84,22 @@ class Tools:
 
         # Build messages array with conversation history
         messages = []
-        
+
         # Add previous conversation history if available
         if self.conversation_history:
             messages.extend(self.conversation_history)
-            print(f"🔍 Using {len(self.conversation_history)} messages from conversation history", flush=True)
-        
+            print(
+                f"🔍 Using {len(self.conversation_history)} messages from conversation history",
+                flush=True,
+            )
+
         # Add current user query
-        messages.append({
-            "role": "user",
-            "content": query,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": query,
+            }
+        )
 
         request_data = {
             "messages": messages,
@@ -116,10 +125,14 @@ class Tools:
             citations = []
 
             async with httpx.AsyncClient(timeout=300.0) as client:
-                async with client.stream("POST", start_url, json=request_data) as response:
+                async with client.stream(
+                    "POST", start_url, json=request_data
+                ) as response:
                     if response.status_code != 200:
                         error_text = await response.aread()
-                        error_message = f"Error: {response.status_code} - {error_text.decode()}"
+                        error_message = (
+                            f"Error: {response.status_code} - {error_text.decode()}"
+                        )
                         print(error_message)
                         await __event_emitter__(
                             {
@@ -186,19 +199,28 @@ class Tools:
                                 elif msg.get("event") == "end":
                                     # Handle end event (e.g., clarification needed)
                                     event_data = msg.get("data", {})
-                                    messages_from_response = event_data.get("messages", [])
-                                    
+                                    messages_from_response = event_data.get(
+                                        "messages", []
+                                    )
+
                                     # Extract clarification message if present
                                     if messages_from_response:
                                         # Find the last assistant message (clarification question)
                                         for message in reversed(messages_from_response):
                                             if message.get("role") == "assistant":
-                                                clarification_msg = message.get("content", "")
+                                                clarification_msg = message.get(
+                                                    "content", ""
+                                                )
                                                 if clarification_msg:
                                                     # Store conversation history for next call
-                                                    self.conversation_history = messages_from_response.copy()
-                                                    print(f"🔍 Stored {len(self.conversation_history)} messages in conversation history", flush=True)
-                                                    
+                                                    self.conversation_history = (
+                                                        messages_from_response.copy()
+                                                    )
+                                                    print(
+                                                        f"🔍 Stored {len(self.conversation_history)} messages in conversation history",
+                                                        flush=True,
+                                                    )
+
                                                     # Emit clarification message to user
                                                     await __event_emitter__(
                                                         {
