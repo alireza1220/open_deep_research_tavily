@@ -3,14 +3,6 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install uv (Python package manager)
 RUN pip install --no-cache-dir uv
 
@@ -23,9 +15,6 @@ COPY README.md ./
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY langgraph.json ./
-
-# Ensure tests package has __init__.py if it doesn't exist
-RUN if [ ! -f ./tests/__init__.py ]; then touch ./tests/__init__.py; fi
 
 # Install Python dependencies using uv
 # Use --system to install into system Python, --no-cache for smaller image
@@ -44,4 +33,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Run FastAPI server
 # Bind to 0.0.0.0 to accept connections from Docker network
 CMD ["python", "-m", "open_deep_research.main", "--host", "0.0.0.0", "--port", "8000"]
-

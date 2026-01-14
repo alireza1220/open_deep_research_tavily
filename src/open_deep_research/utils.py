@@ -582,6 +582,7 @@ async def get_search_tool(search_api: SearchAPI):
         # Configure Perplexity search tool with metadata
         # Import here to avoid circular import
         from open_deep_research.perplexity_utils import perplexity_search
+
         search_tool = perplexity_search
         search_tool.metadata = {
             **(search_tool.metadata or {}),
@@ -995,16 +996,22 @@ def get_base_url_for_model(model_name: str, config: RunnableConfig):
 
 def get_perplexity_api_key(config: RunnableConfig) -> str | None:
     """Get Perplexity API key from environment or config."""
+    print(f"The perplexity api is called")
     should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
+
     if should_get_from_config.lower() == "true":
+        print("it is expected to receive the key from the config")
         api_keys = config.get("configurable", {}).get("apiKeys", {})
         if not api_keys:
+            print("no api keys are provided")
             return None
+        print(f"These are the api keys provided {api_keys}")
         return api_keys.get("PERPLEXITY_API_KEY")
     return os.getenv("PERPLEXITY_API_KEY")
 
 
 def get_tavily_api_key(config: RunnableConfig):
+    print("hi from tavily")
     """Get Tavily API key from environment or config."""
     should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
     if should_get_from_config.lower() == "true":

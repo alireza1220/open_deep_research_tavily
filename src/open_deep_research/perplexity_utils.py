@@ -39,6 +39,10 @@ async def perplexity_search(
         Formatted string containing Perplexity answers and citations
     """
     api_key = get_perplexity_api_key(config)
+
+    print(f"api_key is {api_key}")
+    print(f"config is {config}")
+
     if not api_key:
         return (
             "Perplexity search is not configured. "
@@ -75,12 +79,14 @@ async def perplexity_search(
     async with aiohttp.ClientSession() as session:
         results = await asyncio.gather(*[_run_query(session, q) for q in queries])
 
-    def _extract_title_from_url(url: str, query: str = "", is_primary: bool = True) -> str:
+    def _extract_title_from_url(
+        url: str, query: str = "", is_primary: bool = True
+    ) -> str:
         """Extract a meaningful title from a URL or generate a descriptive one."""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.replace("www.", "")
-            
+
             # Extract meaningful parts from domain
             if domain:
                 # Use domain name as base, capitalize appropriately
@@ -89,7 +95,7 @@ async def perplexity_search(
                     site_name = domain_parts[-2].capitalize()
                 else:
                     site_name = domain.capitalize()
-                
+
                 if is_primary and query:
                     return f"{site_name} - {query}"
                 elif is_primary:
@@ -116,44 +122,54 @@ async def perplexity_search(
     # Collect all sources from all queries
     all_sources = []
     source_counter = 1
-    
+
     for result in results:
         citations = result.get("citations", [])
         content = result.get("content", "")
         query = result.get("query", "")
-        
+
         if not citations:
             # If no citations, create a single source entry with the content
-            title = _extract_title_from_url("https://www.perplexity.ai", query, is_primary=True)
-            all_sources.append({
-                "title": title,
-                "url": "https://www.perplexity.ai",
-                "content": content,
-                "source_number": source_counter
-            })
+            title = _extract_title_from_url(
+                "https://www.perplexity.ai", query, is_primary=True
+            )
+            all_sources.append(
+                {
+                    "title": title,
+                    "url": "https://www.perplexity.ai",
+                    "content": content,
+                    "source_number": source_counter,
+                }
+            )
             source_counter += 1
         else:
             # Create a source entry for each citation
             for i, citation_url in enumerate(citations):
-                is_primary = (i == 0)
-                title = _extract_title_from_url(citation_url, query, is_primary=is_primary)
-                
+                is_primary = i == 0
+                title = _extract_title_from_url(
+                    citation_url, query, is_primary=is_primary
+                )
+
                 if is_primary:
                     # First citation gets the full synthesized content
-                    all_sources.append({
-                        "title": title,
-                        "url": citation_url,
-                        "content": content,
-                        "source_number": source_counter
-                    })
+                    all_sources.append(
+                        {
+                            "title": title,
+                            "url": citation_url,
+                            "content": content,
+                            "source_number": source_counter,
+                        }
+                    )
                 else:
                     # Additional citations are supporting sources
-                    all_sources.append({
-                        "title": title,
-                        "url": citation_url,
-                        "content": f"Supporting source referenced in the main answer for query: {query}",
-                        "source_number": source_counter
-                    })
+                    all_sources.append(
+                        {
+                            "title": title,
+                            "url": citation_url,
+                            "content": f"Supporting source referenced in the main answer for query: {query}",
+                            "source_number": source_counter,
+                        }
+                    )
                 source_counter += 1
 
     # Format output to match Tavily format
@@ -162,7 +178,9 @@ async def perplexity_search(
 
     formatted_output = "Search results: \n\n"
     for source in all_sources:
-        formatted_output += f"\n\n--- SOURCE {source['source_number']}: {source['title']} ---\n"
+        formatted_output += (
+            f"\n\n--- SOURCE {source['source_number']}: {source['title']} ---\n"
+        )
         formatted_output += f"URL: {source['url']}\n\n"
         formatted_output += f"SUMMARY:\n{source['content']}\n\n"
         formatted_output += "\n\n" + "-" * 80 + "\n"
