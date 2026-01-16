@@ -1,14 +1,17 @@
-from perplexity import Perplexity
-from dotenv import load_dotenv
-import os
+import asyncio
 import logging
+import os
 import sys
 from contextlib import redirect_stderr
-from langchain_core.language_models import BaseChatModel
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
-import asyncio
+
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import (
     BaseTool,
     InjectedToolArg,
@@ -16,10 +19,7 @@ from langchain_core.tools import (
     ToolException,
     tool,
 )
-from langchain_core.runnables import RunnableConfig
-from datetime import datetime
-from langchain.chat_models import init_chat_model
-from dotenv import load_dotenv
+from perplexity import Perplexity
 
 load_dotenv()
 
@@ -29,12 +29,12 @@ from langchain_core.messages import (
     MessageLikeRepresentation,
     filter_messages,
 )
-
 from pydantic import BaseModel
+
 
 class Summary(BaseModel):
     """Research summary with key findings."""
-    
+
     summary: str
     key_excerpts: str
 
@@ -50,6 +50,7 @@ from open_deep_research.configuration import Configuration, SearchAPI
 
 # from prompts import summarize_webpage_prompt
 from open_deep_research.prompts import summarize_webpage_prompt
+
 # from prompts import summarize_webpage_prompt
 
 
@@ -67,7 +68,6 @@ from open_deep_research.prompts import summarize_webpage_prompt
 #     load_dotenv(dotenv_path=env_path, verbose=False)
 
 
-
 async def perplexity_search_async(
     queries: List[str],
     max_results: Annotated[int, InjectedToolArg] = 5,
@@ -76,8 +76,8 @@ async def perplexity_search_async(
     ] = "general",
     config: RunnableConfig = None,
 ) -> str:
-
     PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+    print(f" api key is fetched: {PERPLEXITY_API_KEY}")
 
     client = Perplexity(api_key=PERPLEXITY_API_KEY)
 
@@ -134,26 +134,18 @@ async def perplexity_search_async(
     summarization_tasks = [
         noop()
         if not summaries[i]
-        else summarize_webpage(
-            summarization_model, summaries[i][:max_char_to_include]
-        )
+        else summarize_webpage(summarization_model, summaries[i][:max_char_to_include])
         for i in range(len(summaries))
     ]
 
     # Step 5: Execute all summarization tasks in parallel
     summaries = await asyncio.gather(*summarization_tasks)
 
-
-
-
-
     titles = [search.results[i].title for i in range(len(search.results))]
     urls = [search.results[i].url for i in range(len(search.results))]
     # summaries = [search.results[i].snippet for i in range(len(search.results))]
 
-
     # summaries_truncated = [summaries[i][:max_char_to_include] for i in range(len(summaries))]
-
 
     formatted_output = "Search results: \n\n"
     for i in range(len(titles)):
@@ -163,9 +155,9 @@ async def perplexity_search_async(
         # formatted_output += f"SUMMARY:\n<summary>\n{summaries[i]}\n</summary>\n\n"
         formatted_output += "\n\n" + "-" * 80 + "\n"
 
-
     # print(formatted_output)
     return formatted_output
+
 
 def get_today_str() -> str:
     """Get current date formatted for display in prompts and outputs.
@@ -175,6 +167,7 @@ def get_today_str() -> str:
     """
     now = datetime.now()
     return f"{now:%a} {now:%b} {now.day}, {now:%Y}"
+
 
 async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
     """Summarize webpage content using AI model with timeout protection.
@@ -204,6 +197,8 @@ async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
             f"<key_excerpts>\n{summary.key_excerpts}\n</key_excerpts>"
         )
 
+        print(f"successfully processed the request: {formatted_summary}")
+
         return formatted_summary
 
     except asyncio.TimeoutError:
@@ -221,5 +216,9 @@ async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
 
 
 if __name__ == "__main__":
-    output = asyncio.run(perplexity_search_async(["What is human evolution?", "who is the first human discovered"]))
+    output = asyncio.run(
+        perplexity_search_async(
+            ["What is human evolution?", "who is the first human discovered"]
+        )
+    )
     print(output)
