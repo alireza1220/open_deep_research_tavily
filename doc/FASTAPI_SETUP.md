@@ -2,7 +2,7 @@
 
 ## Overview
 
-The FastAPI endpoint provides a REST API interface to the Deep Research agent. It supports both synchronous and streaming research requests, with optional ngrok tunnel support for public access.
+The FastAPI endpoint provides a REST API interface to the Deep Research agent. It supports both synchronous and streaming research requests.
 
 ## Prerequisites
 
@@ -42,25 +42,6 @@ PORT=8080 python -m open_deep_research.main
 
 # Using command-line argument
 python -m open_deep_research.main --port 8080
-```
-
-### With Ngrok Tunnel (Public Access)
-
-To expose the API publicly via ngrok:
-
-```bash
-python -m open_deep_research.main --ngrok
-```
-
-**Note**: This requires `pyngrok` to be installed. If not installed, you'll see an error message with installation instructions.
-
-The output will show:
-```
-============================================================
-ngrok tunnel created successfully!
-Public URL: https://xxxx-xx-xx-xx-xx.ngrok.io
-Local URL: http://localhost:8000
-============================================================
 ```
 
 ### Development Mode (Auto-reload)
@@ -297,14 +278,6 @@ If port 8000 is already in use:
 PORT=8080 python -m open_deep_research.main
 ```
 
-### Ngrok Not Working
-
-If ngrok fails:
-
-1. Ensure `pyngrok` is installed: `pip install pyngrok`
-2. Check if ngrok is authenticated: `ngrok config check`
-3. Try without ngrok first to verify the server works
-
 ### Research Timeout
 
 Research requests can take several minutes. Increase timeout:
@@ -322,7 +295,7 @@ If you see import errors:
 uv sync
 
 # Or install FastAPI dependencies explicitly
-pip install fastapi uvicorn[standard] pyngrok
+pip install fastapi uvicorn[standard]
 ```
 
 ## Production Deployment

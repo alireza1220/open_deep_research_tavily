@@ -7,7 +7,7 @@ This document analyzes the staged FastAPI implementation files and proposes four
 
 ### Core Implementation Files
 - `src/open_deep_research/api.py` - FastAPI application with endpoints
-- `src/open_deep_research/main.py` - Server entry point with ngrok support
+- `src/open_deep_research/main.py` - Server entry point
 - `src/open_deep_research/schemas.py` - Pydantic request/response models
 
 ### Testing Files

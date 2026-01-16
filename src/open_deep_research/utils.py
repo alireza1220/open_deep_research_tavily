@@ -32,6 +32,31 @@ from tavily import AsyncTavilyClient
 from open_deep_research.configuration import Configuration, SearchAPI
 from open_deep_research.prompts import summarize_webpage_prompt
 from open_deep_research.state import ResearchComplete, Summary
+from open_deep_research.perplexity_utils_new import perplexity_search_async
+
+
+# ############################
+# # Perplexity Search Tool Utils
+# ############################
+
+PERPLEXITY_SEARCH_DESCRIPTION = (
+    "Search the web using the Perplexity API and return an answer with citations. "
+    "Useful for getting fast, cited web-backed responses."
+)
+
+@tool(description=PERPLEXITY_SEARCH_DESCRIPTION)
+async def perplexity_search(
+    queries: List[str],
+    max_results: Annotated[int, InjectedToolArg] = 5,
+    topic: Annotated[
+        Literal["general", "news", "finance"], InjectedToolArg
+    ] = "general",
+    config: RunnableConfig = None,
+) -> str:
+
+    return await perplexity_search_async(queries, max_results, topic, config)
+
+
 
 ##########################
 # Tavily Search Tool Utils
@@ -63,6 +88,7 @@ async def tavily_search(
         Formatted string containing summarized search results
     """
     # Step 1: Execute search queries asynchronously
+    # ToolException will propagate and fail the research if search fails
     search_results = await tavily_search_async(
         queries,
         max_results=max_results,
@@ -161,23 +187,78 @@ async def tavily_search_async(
     Returns:
         List of search result dictionaries from Tavily API
     """
-    # Initialize the Tavily client with API key from config
-    tavily_client = AsyncTavilyClient(api_key=get_tavily_api_key(config))
-
-    # Create search tasks for parallel execution
-    search_tasks = [
-        tavily_client.search(
-            query,
-            max_results=max_results,
-            include_raw_content=include_raw_content,
-            topic=topic,
+    # Get API key and validate
+    api_key = get_tavily_api_key(config)
+    
+    if not api_key:
+        error_msg = (
+            "❌ Tavily API key is missing. "
+            "Please set TAVILY_API_KEY in your environment variables (.env file) "
+            "or provide it via config.apiKeys when GET_API_KEYS_FROM_CONFIG=true."
         )
-        for query in search_queries
-    ]
+        print(f"🚨 [tavily_search_async] {error_msg}", flush=True)
+        raise ToolException(error_msg)
+    
+    # Initialize the Tavily client with API key from config
+    try:
+        tavily_client = AsyncTavilyClient(api_key=api_key)
+    except Exception as e:
+        error_msg = f"❌ Failed to initialize Tavily client: {str(e)}"
+        print(f"🚨 [tavily_search_async] {error_msg}", flush=True)
+        raise ToolException(error_msg) from e
+
+    # Create search tasks for parallel execution with error handling
+    async def _safe_search(query: str):
+        """Execute a single search query with error handling."""
+        try:
+            return await tavily_client.search(
+                query,
+                max_results=max_results,
+                include_raw_content=include_raw_content,
+                topic=topic,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            # Check for common API errors
+            if "401" in error_msg or "unauthorized" in error_msg.lower():
+                detailed_error = (
+                    f"❌ Tavily API authentication failed (401 Unauthorized). "
+                    f"The API key may be invalid or expired. "
+                    f"Please verify your TAVILY_API_KEY is correct."
+                )
+            elif "403" in error_msg or "forbidden" in error_msg.lower():
+                detailed_error = (
+                    f"❌ Tavily API access forbidden (403). "
+                    f"Your API key may not have permission to access this resource. "
+                    f"Please check your Tavily account permissions."
+                )
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
+                detailed_error = (
+                    f"❌ Tavily API rate limit exceeded (429). "
+                    f"Please wait before making more requests."
+                )
+            else:
+                detailed_error = (
+                    f"❌ Tavily API error for query '{query}': {error_msg}"
+                )
+            
+            print(f"🚨 [tavily_search_async] {detailed_error}", flush=True)
+            raise ToolException(detailed_error) from e
+
+    search_tasks = [_safe_search(query) for query in search_queries]
 
     # Execute all search queries in parallel and return results
-    search_results = await asyncio.gather(*search_tasks)
-    return search_results
+    try:
+        search_results = await asyncio.gather(*search_tasks)
+        return search_results
+    except ToolException:
+        # Re-raise ToolException to fail the research
+        raise
+    except Exception as e:
+        # Wrap unexpected errors as ToolException
+        error_msg = f"❌ Unexpected error during Tavily search: {str(e)}"
+        print(f"🚨 [tavily_search_async] {error_msg}", flush=True)
+        raise ToolException(error_msg) from e
 
 
 async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
@@ -579,10 +660,7 @@ async def get_search_tool(search_api: SearchAPI):
         return [search_tool]
 
     elif search_api == SearchAPI.PERPLEXITY:
-        # Configure Perplexity search tool with metadata
-        # Import here to avoid circular import
-        from open_deep_research.perplexity_utils import perplexity_search
-
+        # Configure Tavily search tool with metadata
         search_tool = perplexity_search
         search_tool.metadata = {
             **(search_tool.metadata or {}),
@@ -590,6 +668,21 @@ async def get_search_tool(search_api: SearchAPI):
             "name": "web_search",
         }
         return [search_tool]
+
+    # elif search_api == SearchAPI.PERPLEXITY:
+    #     # Configure Perplexity search tool with metadata
+    #     # Import here to avoid circular import
+    #     from open_deep_research.perplexity_utils import perplexity_search
+
+    #     search_tool = perplexity_search
+    #     # Don't override the tool name - keep it as perplexity_search
+    #     # The tool name from @tool decorator is perplexity_search
+    #     search_tool.metadata = {
+    #         **(search_tool.metadata or {}),
+    #         "type": "search",
+    #     }
+    #     print(f"🔍 [get_search_tool] Perplexity tool name: {getattr(search_tool, 'name', 'unknown')}", flush=True)
+    #     return [search_tool]
 
     elif search_api == SearchAPI.NONE:
         # No search functionality configured
@@ -942,31 +1035,69 @@ def get_config_value(value):
         return value.value
 
 
+def _mask_api_key(key: str | None) -> str:
+    """Mask API key for safe logging (shows first 4 and last 4 chars)."""
+    if not key:
+        return "None"
+    if len(key) <= 8:
+        return "***masked***"
+    return f"{key[:4]}...{key[-4:]}"
+
+
 def get_api_key_for_model(model_name: str, config: RunnableConfig):
     """Get API key for a specific model from environment or config."""
     should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
-    print(f"should get key from config: {should_get_from_config}")
+    print(f"🔑 [get_api_key_for_model] GET_API_KEYS_FROM_CONFIG={should_get_from_config}")
+    print(f"🔑 [get_api_key_for_model] Requested model: {model_name}")
     model_name = model_name.lower()
+    
     if should_get_from_config.lower() == "true":
+        print(f"🔑 [get_api_key_for_model] Reading from CONFIG (request body)")
         api_keys = config.get("configurable", {}).get("apiKeys", {})
+        print(f"🔑 [get_api_key_for_model] Available keys in config: {list(api_keys.keys()) if api_keys else 'None'}")
+        
         if not api_keys:
+            print(f"⚠️  [get_api_key_for_model] No apiKeys found in config, returning None")
             return None
+        
+        key_name = None
         if model_name.startswith("openai:"):
-            print(f"openai api key is {api_keys.get('OPENAI_API_KEY')}")
-            return api_keys.get("OPENAI_API_KEY")
+            key_name = "OPENAI_API_KEY"
         elif model_name.startswith("anthropic:"):
-            return api_keys.get("ANTHROPIC_API_KEY")
+            key_name = "ANTHROPIC_API_KEY"
         elif model_name.startswith("google"):
-            return api_keys.get("GOOGLE_API_KEY")
-        return None
+            key_name = "GOOGLE_API_KEY"
+        
+        if key_name:
+            api_key = api_keys.get(key_name)
+            if api_key:
+                print(f"✅ [get_api_key_for_model] Found {key_name} in config: {_mask_api_key(api_key)}")
+            else:
+                print(f"❌ [get_api_key_for_model] {key_name} not found in config.apiKeys")
+            return api_key
+        else:
+            print(f"⚠️  [get_api_key_for_model] Unknown model type, returning None")
+            return None
     else:
+        print(f"🔑 [get_api_key_for_model] Reading from ENVIRONMENT (.env or system env)")
+        key_name = None
         if model_name.startswith("openai:"):
-            return os.getenv("OPENAI_API_KEY")
+            key_name = "OPENAI_API_KEY"
         elif model_name.startswith("anthropic:"):
-            return os.getenv("ANTHROPIC_API_KEY")
+            key_name = "ANTHROPIC_API_KEY"
         elif model_name.startswith("google"):
-            return os.getenv("GOOGLE_API_KEY")
-        return None
+            key_name = "GOOGLE_API_KEY"
+        
+        if key_name:
+            api_key = os.getenv(key_name)
+            if api_key:
+                print(f"✅ [get_api_key_for_model] Found {key_name} in env: {_mask_api_key(api_key)}")
+            else:
+                print(f"❌ [get_api_key_for_model] {key_name} not found in environment")
+            return api_key
+        else:
+            print(f"⚠️  [get_api_key_for_model] Unknown model type, returning None")
+            return None
 
 
 def get_base_url_for_model(model_name: str, config: RunnableConfig):
@@ -996,28 +1127,59 @@ def get_base_url_for_model(model_name: str, config: RunnableConfig):
 
 def get_perplexity_api_key(config: RunnableConfig) -> str | None:
     """Get Perplexity API key from environment or config."""
-    print(f"The perplexity api is called")
     should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
+    print(f"🔑 [get_perplexity_api_key] GET_API_KEYS_FROM_CONFIG={should_get_from_config}")
 
     if should_get_from_config.lower() == "true":
-        print("it is expected to receive the key from the config")
+        print(f"🔑 [get_perplexity_api_key] Reading from CONFIG (request body)")
         api_keys = config.get("configurable", {}).get("apiKeys", {})
+        print(f"🔑 [get_perplexity_api_key] Available keys in config: {list(api_keys.keys()) if api_keys else 'None'}")
+        
         if not api_keys:
-            print("no api keys are provided")
+            print(f"❌ [get_perplexity_api_key] No apiKeys found in config, returning None")
             return None
-        print(f"These are the api keys provided {api_keys}")
-        return api_keys.get("PERPLEXITY_API_KEY")
-    return os.getenv("PERPLEXITY_API_KEY")
+        
+        api_key = api_keys.get("PERPLEXITY_API_KEY")
+        if api_key:
+            print(f"✅ [get_perplexity_api_key] Found PERPLEXITY_API_KEY in config: {_mask_api_key(api_key)}")
+        else:
+            print(f"❌ [get_perplexity_api_key] PERPLEXITY_API_KEY not found in config.apiKeys")
+        return api_key
+    else:
+        print(f"🔑 [get_perplexity_api_key] Reading from ENVIRONMENT (.env or system env)")
+        api_key = os.getenv("PERPLEXITY_API_KEY")
+        if api_key:
+            print(f"✅ [get_perplexity_api_key] Found PERPLEXITY_API_KEY in env: {_mask_api_key(api_key)}")
+        else:
+            print(f"❌ [get_perplexity_api_key] PERPLEXITY_API_KEY not found in environment")
+        return api_key
 
 
 def get_tavily_api_key(config: RunnableConfig):
-    print("hi from tavily")
     """Get Tavily API key from environment or config."""
     should_get_from_config = os.getenv("GET_API_KEYS_FROM_CONFIG", "false")
+    print(f"🔑 [get_tavily_api_key] GET_API_KEYS_FROM_CONFIG={should_get_from_config}")
+    
     if should_get_from_config.lower() == "true":
+        print(f"🔑 [get_tavily_api_key] Reading from CONFIG (request body)")
         api_keys = config.get("configurable", {}).get("apiKeys", {})
+        print(f"🔑 [get_tavily_api_key] Available keys in config: {list(api_keys.keys()) if api_keys else 'None'}")
+        
         if not api_keys:
+            print(f"❌ [get_tavily_api_key] No apiKeys found in config, returning None")
             return None
-        return api_keys.get("TAVILY_API_KEY")
+        
+        api_key = api_keys.get("TAVILY_API_KEY")
+        if api_key:
+            print(f"✅ [get_tavily_api_key] Found TAVILY_API_KEY in config: {_mask_api_key(api_key)}")
+        else:
+            print(f"❌ [get_tavily_api_key] TAVILY_API_KEY not found in config.apiKeys")
+        return api_key
     else:
-        return os.getenv("TAVILY_API_KEY")
+        print(f"🔑 [get_tavily_api_key] Reading from ENVIRONMENT (.env or system env)")
+        api_key = os.getenv("TAVILY_API_KEY")
+        if api_key:
+            print(f"✅ [get_tavily_api_key] Found TAVILY_API_KEY in env: {_mask_api_key(api_key)}")
+        else:
+            print(f"❌ [get_tavily_api_key] TAVILY_API_KEY not found in environment")
+        return api_key

@@ -10,8 +10,6 @@ from typing import Optional
 from dotenv import load_dotenv
 import uvicorn
 
-from open_deep_research.ngrok_utils import setup_ngrok, cleanup_ngrok
-
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -20,7 +18,6 @@ load_dotenv(dotenv_path=env_path)
 def signal_handler(sig, frame):
     """Handle shutdown signals."""
     print("\nShutting down server...")
-    cleanup_ngrok()
     sys.exit(0)
 
 
@@ -28,11 +25,6 @@ def main():
     """Main entry point for the FastAPI server."""
     parser = argparse.ArgumentParser(
         description="Run the Open Deep Research FastAPI server"
-    )
-    parser.add_argument(
-        "--ngrok",
-        action="store_true",
-        help="Enable ngrok tunnel for public access",
     )
     parser.add_argument(
         "--port",
@@ -61,22 +53,13 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Set up ngrok if requested
-    if args.ngrok:
-        setup_ngrok(port)
-    
     # Run the server
-    try:
-        uvicorn.run(
-            "open_deep_research.api:app",
-            host=args.host,
-            port=port,
-            reload=args.reload,
-        )
-    finally:
-        # Clean up ngrok on exit
-        if args.ngrok:
-            cleanup_ngrok()
+    uvicorn.run(
+        "open_deep_research.api:app",
+        host=args.host,
+        port=port,
+        reload=args.reload,
+    )
 
 
 if __name__ == "__main__":

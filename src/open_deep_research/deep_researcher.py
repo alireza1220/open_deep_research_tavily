@@ -382,8 +382,10 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
     Returns:
         Command to proceed to researcher_tools for tool execution
     """
+    print(f"🔍 [researcher] Function called", flush=True)
     # Step 1: Load configuration and validate tool availability
     configurable = Configuration.from_runnable_config(config)
+    print(f"🔍 [researcher] Configuration loaded, search_api: {get_config_value(configurable.search_api)}", flush=True)
     researcher_messages = state.get("researcher_messages", [])
     
     # Log search API configuration
@@ -454,10 +456,55 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
 
 # Tool Execution Helper Function
 async def execute_tool_safely(tool, args, config):
-    """Safely execute a tool with error handling."""
+    """Safely execute a tool with error handling.
+    
+    For search tools (tavily_search, perplexity_search), ToolException will propagate
+    to fail the research if the search API fails. For other tools, errors are caught
+    and returned as error messages.
+    """
+    from langchain_core.tools import ToolException
+    
+    tool_name = getattr(tool, "name", "")
+    print(f"🔍 [execute_tool_safely] Executing tool: {tool_name} with args: {str(args)[:200]}", flush=True)
+    
     try:
-        return await tool.ainvoke(args, config)
+        result = await tool.ainvoke(args, config)
+        print(f"✅ [execute_tool_safely] Tool '{tool_name}' completed successfully", flush=True)
+        return result
+    except ToolException as e:
+        # For search tools, let ToolException propagate to fail the research
+        # Check if this is a search tool - check both tool.name and metadata
+        tool_name = getattr(tool, "name", "")
+        metadata_name = tool.metadata.get("name", "") if hasattr(tool, "metadata") and tool.metadata else ""
+        is_search_tool = (
+            tool_name in ["tavily_search", "perplexity_search", "web_search"] or
+            metadata_name in ["tavily_search", "perplexity_search", "web_search"] or
+            (hasattr(tool, "metadata") and tool.metadata and tool.metadata.get("type") == "search")
+        )
+        if is_search_tool:
+            print(f"🚨 [execute_tool_safely] Search tool '{tool_name}' failed, failing research", flush=True)
+            # Re-raise ToolException for search tools to fail the research
+            raise
+        # For other tools, return error message
+        return f"Error executing tool: {str(e)}"
     except Exception as e:
+        # Check if this is a search tool before handling error
+        tool_name = getattr(tool, "name", "")
+        metadata_name = tool.metadata.get("name", "") if hasattr(tool, "metadata") and tool.metadata else ""
+        is_search_tool = (
+            tool_name in ["tavily_search", "perplexity_search", "web_search"] or
+            metadata_name in ["tavily_search", "perplexity_search", "web_search"] or
+            (hasattr(tool, "metadata") and tool.metadata and tool.metadata.get("type") == "search")
+        )
+        
+        if is_search_tool:
+            # For search tools, wrap non-ToolException errors as ToolException
+            error_msg = f"❌ Error executing search tool '{tool_name}': {str(e)}"
+            print(f"🚨 [execute_tool_safely] {error_msg}", flush=True)
+            raise ToolException(error_msg) from e
+        
+        # For non-search tools, return error as string
+        print(f"⚠️  [execute_tool_safely] Non-search tool '{tool_name}' error: {str(e)}", flush=True)
         return f"Error executing tool: {str(e)}"
 
 
@@ -477,8 +524,10 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
     Returns:
         Command to either continue research loop or proceed to compression
     """
+    print(f"🔍 [researcher_tools] Function called", flush=True)
     # Step 1: Extract current state and check early exit conditions
     configurable = Configuration.from_runnable_config(config)
+    print(f"🔍 [researcher_tools] Configuration loaded", flush=True)
     researcher_messages = state.get("researcher_messages", [])
     most_recent_message = researcher_messages[-1]
     
@@ -489,23 +538,108 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
         anthropic_websearch_called(most_recent_message)
     )
     
+    print(f"🔍 [researcher_tools] has_tool_calls: {has_tool_calls}, has_native_search: {has_native_search}", flush=True)
+    if has_tool_calls:
+        print(f"🔍 [researcher_tools] Tool calls found: {[tc.get('name', 'unknown') for tc in most_recent_message.tool_calls]}", flush=True)
+    else:
+        print(f"🔍 [researcher_tools] No tool calls - checking message type: {type(most_recent_message)}", flush=True)
+        if hasattr(most_recent_message, 'content'):
+            print(f"🔍 [researcher_tools] Message content preview: {str(most_recent_message.content)[:200]}", flush=True)
+    
     if not has_tool_calls and not has_native_search:
+        # Check if search API is configured - if so, we should require at least one search
+        search_api = SearchAPI(get_config_value(configurable.search_api))
+        if search_api != SearchAPI.NONE:
+            error_msg = (
+                f"Research failed: Search API '{search_api.value}' is configured but no search was performed. "
+                f"The research completed without conducting any searches, which is required for deep research."
+            )
+            print(f"🚨 [researcher_tools] {error_msg}", flush=True)
+            from langchain_core.tools import ToolException
+            raise ToolException(error_msg)
         return Command(goto="compress_research")
     
     # Step 2: Handle other tool calls (search, MCP tools, etc.)
     tools = await get_all_tools(config)
-    tools_by_name = {
-        tool.name if hasattr(tool, "name") else tool.get("name", "web_search"): tool 
-        for tool in tools
-    }
+    tools_by_name = {}
+    for tool in tools:
+        # Get tool name - check both .name attribute and metadata
+        tool_name = None
+        if hasattr(tool, "name"):
+            tool_name = tool.name
+        elif isinstance(tool, dict):
+            tool_name = tool.get("name", "web_search")
+        else:
+            tool_name = getattr(tool, "name", "web_search")
+        
+        tools_by_name[tool_name] = tool
+        # Also add metadata name if different
+        if hasattr(tool, "metadata") and tool.metadata:
+            metadata_name = tool.metadata.get("name")
+            if metadata_name and metadata_name != tool_name:
+                tools_by_name[metadata_name] = tool
+    
+    # Debug: Log available tools
+    available_tool_names = list(tools_by_name.keys())
+    print(f"🔍 [researcher_tools] Available tools: {available_tool_names}", flush=True)
     
     # Execute all tool calls in parallel
     tool_calls = most_recent_message.tool_calls
+    print(f"🔍 [researcher_tools] Tool calls requested: {[tc['name'] for tc in tool_calls]}", flush=True)
+    
+    # Check if perplexity_search is in available tools
+    if "perplexity_search" in available_tool_names:
+        print(f"✅ [researcher_tools] perplexity_search tool is available", flush=True)
+    else:
+        print(f"⚠️  [researcher_tools] perplexity_search tool NOT found in available tools!", flush=True)
+    
+    print(f"🔍 [researcher_tools] Preparing to execute {len(tool_calls)} tool calls", flush=True)
+    
+    # Validate all tools exist before executing
+    for tool_call in tool_calls:
+        tool_name = tool_call["name"]
+        if tool_name not in tools_by_name:
+            error_msg = f"Tool '{tool_name}' not found in available tools: {list(tools_by_name.keys())}"
+            print(f"🚨 [researcher_tools] {error_msg}", flush=True)
+            from langchain_core.tools import ToolException
+            raise ToolException(error_msg)
+        print(f"🔍 [researcher_tools] Found tool '{tool_name}' in tools_by_name, preparing to execute", flush=True)
+    
     tool_execution_tasks = [
         execute_tool_safely(tools_by_name[tool_call["name"]], tool_call["args"], config) 
         for tool_call in tool_calls
     ]
-    observations = await asyncio.gather(*tool_execution_tasks)
+    print(f"🔍 [researcher_tools] Created {len(tool_execution_tasks)} execution tasks, starting gather...", flush=True)
+    
+    # Gather results - check for ToolException from search tools
+    from langchain_core.tools import ToolException
+    
+    def _extract_tool_exception(exc: Exception) -> ToolException | None:
+        """Extract ToolException from exception chain, including ExceptionGroup."""
+        if isinstance(exc, ToolException):
+            return exc
+        # Handle ExceptionGroup (Python 3.11+)
+        if hasattr(exc, "exceptions"):
+            for sub_exc in exc.exceptions:
+                if found := _extract_tool_exception(sub_exc):
+                    return found
+        return None
+    
+    try:
+        # Use return_exceptions=False so ToolException propagates immediately
+        observations = await asyncio.gather(*tool_execution_tasks, return_exceptions=False)
+    except Exception as e:
+        # Check if this is a ToolException from a search tool
+        tool_exc = _extract_tool_exception(e)
+        if tool_exc:
+            # If a search tool fails, fail the entire research IMMEDIATELY
+            error_msg = f"Research failed: {str(tool_exc)}"
+            print(f"🚨 [researcher_tools] {error_msg}", flush=True)
+            # Raise exception to stop graph execution immediately
+            # The API endpoint will catch this and send an error event
+            raise RuntimeError(error_msg) from tool_exc
+        # Re-raise other exceptions
+        raise
     
     # Create tool messages from execution results
     tool_outputs = [
@@ -516,6 +650,51 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
         ) 
         for observation, tool_call in zip(observations, tool_calls)
     ]
+    
+    # CRITICAL VALIDATION: If search API is configured, ensure search tool was actually called
+    search_api = SearchAPI(get_config_value(configurable.search_api))
+    if search_api in [SearchAPI.TAVILY, SearchAPI.PERPLEXITY]:
+        # Check if any of the executed tool calls were search tools
+        search_tool_names = ["tavily_search", "perplexity_search"]
+        tool_names_called = [tc["name"] for tc in tool_calls]
+        search_tool_called = any(name in tool_names_called for name in search_tool_names)
+        
+        print(f"🔍 [researcher_tools] Search API configured: {search_api.value}", flush=True)
+        print(f"🔍 [researcher_tools] Tool names called: {tool_names_called}", flush=True)
+        print(f"🔍 [researcher_tools] Search tool called: {search_tool_called}", flush=True)
+        
+        if not search_tool_called:
+            # Build a clearer error message that distinguishes between search tools and other tools
+            search_tool_name = 'tavily_search' if search_api == SearchAPI.TAVILY else 'perplexity_search'
+            other_tools = [name for name in tool_names_called if name not in ["tavily_search", "perplexity_search"]]
+            other_tools_str = ", ".join(other_tools) if other_tools else "none"
+            
+            # Collect tool responses for debugging - use tool_outputs which have the actual content
+            tool_responses = []
+            for tool_output, tool_call in zip(tool_outputs, tool_calls):
+                tool_name = tool_call["name"]
+                # Get content from ToolMessage object
+                content = tool_output.content if hasattr(tool_output, 'content') else str(tool_output)
+                # Truncate to 500 chars for readability but show more than before
+                response_preview = str(content)[:500] if content else "None"
+                tool_responses.append(f"{tool_name}: {response_preview}")
+            
+            tool_responses_str = " | ".join(tool_responses) if tool_responses else "No tool responses"
+            
+            # Print tool responses separately for better visibility
+            print(f"🔍 [researcher_tools] Tool response: {tool_responses_str}", flush=True)
+            
+            error_msg = (
+                f"Research failed: Search API '{search_api.value}' is configured but the required search tool "
+                f"({search_tool_name}) was not called. "
+                f"Other tools called: {other_tools_str}. "
+                f"Tool response: {tool_responses_str}. "
+                f"The research must call the search tool ({search_tool_name}) to perform deep research, "
+                f"even if other tools like 'think_tool' are also used."
+            )
+            print(f"🚨 [researcher_tools] {error_msg}", flush=True)
+            from langchain_core.tools import ToolException
+            raise ToolException(error_msg)
     
     # Step 3: Check late exit conditions (after processing tools)
     exceeded_iterations = state.get("tool_call_iterations", 0) >= configurable.max_react_tool_calls
@@ -553,6 +732,42 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
     """
     # Step 1: Configure the compression model
     configurable = Configuration.from_runnable_config(config)
+    
+    print(f"🔍 [compress_research] Function called - starting validation", flush=True)
+    
+    # CRITICAL VALIDATION: Check if search tool was called during entire research session
+    search_api = SearchAPI(get_config_value(configurable.search_api))
+    if search_api in [SearchAPI.TAVILY, SearchAPI.PERPLEXITY]:
+        researcher_messages = state.get("researcher_messages", [])
+        search_tool_names = ["tavily_search", "perplexity_search"]
+        
+        # Check all messages for search tool calls
+        search_tool_called = False
+        all_tool_names_called = []
+        for msg in researcher_messages:
+            if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else getattr(tool_call, "name", "")
+                    if tool_name:
+                        all_tool_names_called.append(tool_name)
+                        if tool_name in search_tool_names:
+                            search_tool_called = True
+                            print(f"✅ [compress_research] Found search tool call: {tool_name}", flush=True)
+        
+        print(f"🔍 [compress_research] Search API configured: {search_api.value}", flush=True)
+        print(f"🔍 [compress_research] All tool names called during research: {all_tool_names_called}", flush=True)
+        print(f"🔍 [compress_research] Search tool called: {search_tool_called}", flush=True)
+        
+        if not search_tool_called:
+            error_msg = (
+                f"Research failed: Search API '{search_api.value}' is configured but the required search tool "
+                f"({'tavily_search' if search_api == SearchAPI.TAVILY else 'perplexity_search'}) was never called during the research session. "
+                f"Tools called: {all_tool_names_called}. "
+                f"The research must call the search tool to perform deep research."
+            )
+            print(f"🚨 [compress_research] {error_msg}", flush=True)
+            from langchain_core.tools import ToolException
+            raise ToolException(error_msg)
     synthesizer_model = configurable_model.with_config({
         "model": configurable.compression_model,
         "max_tokens": configurable.compression_model_max_tokens,
@@ -634,6 +849,68 @@ researcher_builder.add_edge("compress_research", END)      # Exit point after co
 # Compile researcher subgraph for parallel execution by supervisor
 researcher_subgraph = researcher_builder.compile()
 
+def extract_urls_from_text(text: str) -> list[str]:
+    """Extract all URLs from text using multiple patterns.
+    
+    Args:
+        text: Text to search for URLs
+        
+    Returns:
+        List of unique URLs found in the text
+    """
+    import re
+    urls = set()
+    
+    if not text:
+        return []
+    
+    # Pattern 1: URLs after "URL: " (from Perplexity/Tavily formatted output)
+    # This pattern handles: "URL: https://example.com" or "URL:https://example.com"
+    pattern1 = r'URL:\s*(https?://[^\s\n\r<>"\'()]+)'
+    matches = re.finditer(pattern1, text, re.IGNORECASE | re.MULTILINE)
+    for match in matches:
+        url = match.group(1).strip().rstrip('.,;:')
+        # Clean up any trailing characters that might have been captured
+        url = re.sub(r'[.,;:]+$', '', url)
+        if url and len(url) > 10:
+            urls.add(url)
+    
+    # Pattern 2: Markdown links [Title](URL)
+    pattern2 = r'\[([^\]]+)\]\((https?://[^)]+)\)'
+    matches = re.finditer(pattern2, text)
+    for match in matches:
+        url = match.group(2).strip().rstrip('.,;:')
+        if url and len(url) > 10:
+            urls.add(url)
+    
+    # Pattern 3: Standalone URLs (http:// or https://)
+    # More restrictive to avoid false positives
+    pattern3 = r'(https?://[^\s\n\r<>"\'()\[\]]+[^\s\n\r<>"\'()\[\].,;:])'
+    matches = re.finditer(pattern3, text)
+    for match in matches:
+        url = match.group(1).strip().rstrip('.,;:')
+        # Filter out URLs that are clearly incomplete or malformed
+        # Must have a domain (contain a dot) and be reasonably long
+        if url and len(url) > 10 and '.' in url and not url.endswith('...'):
+            # Exclude common false positives
+            if not any(excluded in url.lower() for excluded in ['example.com', 'placeholder', 'test.com']):
+                urls.add(url)
+    
+    # Normalize URLs (remove trailing slashes for deduplication, but preserve original)
+    normalized_urls = {}
+    for url in urls:
+        # Normalize for comparison: lowercase, remove trailing slash
+        normalized = url.lower().rstrip('/')
+        # Keep the original URL (preferring https over http if both exist)
+        if normalized not in normalized_urls:
+            normalized_urls[normalized] = url
+        elif url.startswith('https://') and not normalized_urls[normalized].startswith('https://'):
+            # Prefer https version
+            normalized_urls[normalized] = url
+    
+    return list(normalized_urls.values())
+
+
 async def final_report_generation(state: AgentState, config: RunnableConfig):
     """Generate the final comprehensive research report with retry logic for token limits.
     
@@ -651,6 +928,35 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
     notes = state.get("notes", [])
     cleared_state = {"notes": {"type": "override", "value": []}}
     findings = "\n".join(notes)
+    
+    # Step 1.5: Extract URLs from findings and messages
+    messages_text = get_buffer_string(state.get("messages", []))
+    all_text = findings + "\n\n" + messages_text
+    
+    # Extract URLs separately from findings and messages to debug
+    urls_from_findings = extract_urls_from_text(findings)
+    urls_from_messages = extract_urls_from_text(messages_text)
+    extracted_urls = extract_urls_from_text(all_text)
+    
+    # Debug: Print URL extraction results
+    print(f"🔗 [final_report_generation] URL extraction results:", flush=True)
+    print(f"🔗 [final_report_generation]   URLs from findings: {len(urls_from_findings)}", flush=True)
+    print(f"🔗 [final_report_generation]   URLs from messages: {len(urls_from_messages)}", flush=True)
+    print(f"🔗 [final_report_generation]   Total unique URLs: {len(extracted_urls)}", flush=True)
+    if extracted_urls:
+        print(f"🔗 [final_report_generation]   Sample URLs (first 5):", flush=True)
+        for i, url in enumerate(extracted_urls[:5], 1):
+            print(f"🔗 [final_report_generation]     [{i}] {url}", flush=True)
+    
+    # Format URLs as a numbered list for the prompt
+    if extracted_urls:
+        available_sources = "\n".join([f"[{i+1}] {url}" for i, url in enumerate(extracted_urls)])
+        print(f"🔗 [final_report_generation] Formatted {len(extracted_urls)} URLs for Available Sources section", flush=True)
+    else:
+        available_sources = "No URLs found in research findings."
+        print(f"⚠️  [final_report_generation] WARNING: No URLs found in research findings or messages!", flush=True)
+        print(f"⚠️  [final_report_generation] Findings length: {len(findings)} chars", flush=True)
+        print(f"⚠️  [final_report_generation] Messages length: {len(messages_text)} chars", flush=True)
     
     # Step 2: Configure the final report generation model
     configurable = Configuration.from_runnable_config(config)
@@ -672,8 +978,9 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
             # Create comprehensive prompt with all research context
             final_report_prompt = final_report_generation_prompt.format(
                 research_brief=state.get("research_brief", ""),
-                messages=get_buffer_string(state.get("messages", [])),
+                messages=messages_text,
                 findings=findings,
+                available_sources=available_sources,
                 date=get_today_str()
             )
             

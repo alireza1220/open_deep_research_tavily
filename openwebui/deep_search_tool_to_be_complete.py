@@ -19,7 +19,7 @@ class Tools:
             description="Base URL for Deep Search FastAPI endpoint. "
             "For Docker: use 'host.docker.internal:8000' (Mac/Windows) or host IP (Linux). "
             "For same Docker network: use service name like 'fastapi:8000'. "
-            "For public access: use ngrok/cloudflared URL.",
+            "For public access: use cloudflared or other tunnel URL.",
         )
 
         OPENAI_BASE_URL: str = Field(
@@ -27,6 +27,11 @@ class Tools:
         )
 
         OPENAI_API_KEY: str = Field(default="sk-", description="API key for API")
+
+        PERPLEXITY_API_KEY: str = Field(
+            default="pplx-",
+            description="API key for Perplexity search API"
+        )
 
         SUMMARIZER_MODEL: str = Field(
             default="openai:Llama-4-Maverick",
@@ -107,7 +112,10 @@ class Tools:
                 "allow_clarification": self.valves.ALLOW_CLARIFICATION,
                 "max_researcher_iterations": self.valves.MAX_RESEARCHER_ITERATION,
                 "search_api": self.valves.SEARCH_API,
-                "apiKeys": {"OPENAI_API_KEY": self.valves.OPENAI_API_KEY},
+                "apiKeys": {
+                    "OPENAI_API_KEY": self.valves.OPENAI_API_KEY,
+                    "PERPLEXITY_API_KEY": self.valves.PERPLEXITY_API_KEY
+                },
                 "apiBaseUrl": {"OPENAI_API_BASE_URL": self.valves.OPENAI_BASE_URL},
                 "summarization_model": self.valves.SUMMARIZER_MODEL,
                 "research_model": self.valves.RESEARCH_MODEL,

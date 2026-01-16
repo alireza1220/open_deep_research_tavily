@@ -7,7 +7,7 @@ This document analyzes the staged changes and breaks down the implementation int
 
 ### Core Implementation
 - `src/open_deep_research/api.py` (262 lines) - FastAPI application with endpoints
-- `src/open_deep_research/main.py` (117 lines) - Server entry point with ngrok
+- `src/open_deep_research/main.py` (117 lines) - Server entry point
 - `src/open_deep_research/schemas.py` (60 lines) - Pydantic request/response models
 
 ### Testing & Documentation
@@ -17,7 +17,7 @@ This document analyzes the staged changes and breaks down the implementation int
 - `README.md` - Updated with FastAPI section
 
 ### Configuration
-- `pyproject.toml` - Added FastAPI, uvicorn, pyngrok dependencies
+- `pyproject.toml` - Added FastAPI, uvicorn dependencies
 
 ---
 
@@ -87,37 +87,29 @@ Created comprehensive Pydantic schemas for request validation and response seria
 
 ---
 
-## Task 3: Server Entry Point with Ngrok Support
+## Task 3: Server Entry Point
 **Description:**
-Implemented a command-line entry point for running the FastAPI server with optional ngrok tunnel support. Added argument parsing for port, host, reload, and ngrok flags. Implemented graceful shutdown handling and environment variable loading from .env file.
+Implemented a command-line entry point for running the FastAPI server. Added argument parsing for port, host, and reload flags. Implemented graceful shutdown handling and environment variable loading from .env file.
 
 **Files Created/Modified:**
 - `src/open_deep_research/main.py` - Server entry point
 
 **Key Features Implemented:**
-- Command-line argument parsing (--ngrok, --port, --host, --reload)
-- Ngrok tunnel setup and cleanup functions
+- Command-line argument parsing (--port, --host, --reload)
 - Graceful shutdown with signal handlers (SIGINT, SIGTERM)
 - Environment variable loading from .env file using python-dotenv
 - Port configuration via environment variable or command-line argument
-- Error handling for missing pyngrok dependency
-- Clean ngrok tunnel termination on server shutdown
 
 **Difficulty: Medium**
 - **Reasoning:**
   - Required understanding of argparse and signal handling
-  - Ngrok integration needed proper setup/teardown logic
   - Environment variable management and .env file loading
   - Graceful shutdown handling for cleanup
-  - Error handling for optional dependencies
-  - Estimated effort: 3-4 hours
+  - Estimated effort: 2-3 hours
 
 **Key Challenges Overcome:**
-- Properly handling ngrok tunnel lifecycle (setup and cleanup)
 - Signal handling for graceful shutdown on Ctrl+C
 - Finding .env file path relative to module location
-- Providing clear error messages when pyngrok is missing
-- Ensuring ngrok cleanup happens even on unexpected exits
 
 ---
 
@@ -143,7 +135,6 @@ Created comprehensive integration tests for all FastAPI endpoints and wrote deta
 - Complete setup documentation with examples
 - API usage examples (curl, Python)
 - Troubleshooting guide
-- Ngrok usage instructions
 
 **Difficulty: Medium**
 - **Reasoning:**
@@ -160,7 +151,6 @@ Created comprehensive integration tests for all FastAPI endpoints and wrote deta
 - Creating clear, comprehensive documentation
 - Writing tests that are both thorough and maintainable
 - Providing practical examples for different scenarios
-- Documenting ngrok setup and usage
 
 ---
 
@@ -170,9 +160,9 @@ Created comprehensive integration tests for all FastAPI endpoints and wrote deta
 |------|-------|---------------|------------|----------------|
 | 1. Core API Endpoints | api.py | ~260 | Medium-Hard | 5-7 hours |
 | 2. Pydantic Schemas | schemas.py | ~60 | Easy-Medium | 2-3 hours |
-| 3. Server Entry Point | main.py | ~117 | Medium | 3-4 hours |
+| 3. Server Entry Point | main.py | ~85 | Medium | 2-3 hours |
 | 4. Tests & Documentation | Multiple | ~800+ | Medium | 4-5 hours |
-| **Total** | **7 files** | **~1200+** | **Mixed** | **14-19 hours** |
+| **Total** | **7 files** | **~1200+** | **Mixed** | **13-18 hours** |
 
 ## Implementation Highlights
 
@@ -181,7 +171,6 @@ Created comprehensive integration tests for all FastAPI endpoints and wrote deta
 - ✅ Full state response with all research data (report, messages, notes, brief)
 - ✅ Server-Sent Events streaming for real-time updates
 - ✅ Complete configuration exposure (all Configuration fields)
-- ✅ Optional ngrok tunnel for public access
 - ✅ Comprehensive error handling
 - ✅ Environment variable management
 
